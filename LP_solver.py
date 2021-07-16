@@ -73,6 +73,46 @@ def lexicographic_method(obj, lhs, rhs):
 	# TODO: how to do this symbolically?? or do I actually add these tiny values in??
 	return rhs
 
+# There are 2 parts: 1) determining if LP is feasible; and 2) finding feasible dictionary form and return this LP.
+def auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs):
+	# 1) check if the LP is feasible (does optimal Omega = 0?) 
+	
+	# create new aux_LP (a copy of the original which will be modified)
+	aux_obj = obj
+	aux_obj_vars = obj_vars
+	aux_lhs = lhs
+	aux_lhs_vars = lhs_vars
+	aux_rhs = rhs
+	# Find the row that contains the most negative aux_rhs value (this will be pivoted)
+	most_neg_val = 0
+	for row, b in enumerate(aux_rhs):
+		if b < most_neg_val:
+			most_neg_row = row
+			most_neg_val = b
+	# set all previous objective function coeffs to 0 in aux_LP
+	for i in range(len(aux_obj)):
+		aux_obj[i] = 0
+	# add a new variable (omega) to the end of the row with the most negative b
+	# this will include modifying aux_obj, aux_obj_vars, aux_lhs, and aux_lhs_vars
+	#TODO
+
+	# now pivot, with entering=omega and leaving=(the variable in the most_neg_row)
+	# TODO
+	# this aux_LP is now feasible, so it can be sent into largest_coeff_pivot():
+
+	# 'True' indicates that we're working with an Auxiliary LP, 
+	# which largest_coeff_pivot() handles slightly differently (returns only one value)
+	aux_obj_val = largest_coeff_pivot(aux_obj, aux_obj_vars, aux_lhs, aux_rhs, True)
+	# If true, then the original LP is infeasible. Print infeasible and terminate program.
+	if aux_obj_val != 0:
+		print('infeasible')
+		exit(0)
+
+	# 2) Modify original LP so that it's feasible, then return it. 
+	
+	# at this point, the original LP should not have been modified in any way, only the aux_LP
+	return obj, obj_vars, lhs, lhs_vars, rhs
+
 # Checks for and handles degeneracy, unboundedness, infeasibility, and auxiliary method necessity.
 # If none of the above: Find largest coefficient and pivot it via the Simplex Method. Repeat until optimal. 
 # Return optimal dictionary form.
@@ -87,10 +127,12 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 			# until worked out, just exit the program
 			print('DEGENERATE DICTIONARY')
 			exit(0)
-
+		
+		# Note, if no val in rhs is negative to start, it never will become negative. 
 		for b in rhs:
 			if b < 0:
 				print("NEED AUXILIARY TO FIND FEASIBLE POINT")
+				
 				exit(0)
 		
 		# TODO: LARGEST_COEFF_PIVOT: find largest coeff, pivot it, return 
