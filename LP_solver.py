@@ -1,18 +1,20 @@
-# Magic incantation:
+# Magic debugging incantation:
 #__import__('code').interact(local={k: v for ns in (globals(), locals()) for k, v in ns.items()})
+
 import numpy as np
 import sys
+# used to verify results in the beginning
 from scipy.optimize import linprog
 
 def parse_input():
-	# get input file name
-	filename = sys.argv[-1]
+	
+	#filename = sys.argv[-1]
+	filename = "/dev/stdin"
 	# open input file and read lines
 	f = open(filename)
-	lines = f.readlines()
-	
+	lines = f.readlines()	
+
 	for iter, line in enumerate(lines):
-		#print(line)
 		if iter is 0:
 			obj = np.array([float(x.strip()) for x in line.split()])
 			# obj *= -1 # this is only necessary for running the scipy's linprog
@@ -75,7 +77,8 @@ def is_degenerate(rhs):
 
 def pivot_dictionary(obj, obj_vars, obj_val, lhs, lhs_vars, rhs, entering_pos, leaving_pos):
 	# perform pivot (2 parts: 1. pivot variable placement; 2. update coefficients):
-	# 1. pivot just the variable location arrays:
+	
+	# 1) pivot just the variable location arrays:
 	temp_var = 0
 	for pos in range(len(obj_vars)):
 		if pos == entering_pos:
@@ -88,8 +91,7 @@ def pivot_dictionary(obj, obj_vars, obj_val, lhs, lhs_vars, rhs, entering_pos, l
 			if col_num == entering_pos+1:
 				lhs_vars[row_num, col_num] = obj_vars[entering_pos]
 	
-	# 2. update coefficients:
-	
+	# 2) update coefficients:
 	# objective value
 	obj_val += obj[entering_pos] * rhs[leaving_pos] / lhs[leaving_pos, entering_pos]	
 
@@ -154,7 +156,7 @@ def auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs):
 	aux_obj = np.append(aux_obj, -1)
 	# add col of -1's to aux_lhs
 	col_of_ones = np.ones((np.shape(aux_lhs)[0], 1))
-	aux_lhs = np.hstack((aux_lhs, -col_of_ones))
+	aux_lhs = np.hstack((aux_lhs, -col_of_ones)) 
 	# omega=0 in the array of variable positions (recall: w_n=-n and x_n=1)
 	aux_obj_vars = np.append(aux_obj_vars, 0)
 	# add col of 0's to aux_lhs_vars (this represents the position of omega in lhs)
@@ -171,10 +173,33 @@ def auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs):
 
 	# Send aux_LP into largest_coeff_pivot() solve it and find the aux_obj_val
 	#TODO: think about possible errors if this aux_LP is unbounded or something....
+	'''
+	print('LP BEING SENT INTO LARGEST_COEFF_PIVOT FROM WITHIN AUX_METHOD:')
+	print('aux_obj:\n', aux_obj)
+	print('aux_obj_val: ', aux_obj_val)
+	print('aux_lhs:\n', aux_lhs)
+	print('aux_rhs:\n', aux_rhs)
+	print('aux_obj_vars:\n', aux_obj_vars)
+	print('aux_lhs_vars:\n', aux_lhs_vars)
+	print('==============================')
+	'''
+	
 	aux_obj, aux_obj_vars, aux_obj_val, aux_lhs, aux_lhs_vars, aux_rhs = largest_coeff_pivot(aux_obj, aux_obj_vars, aux_obj_val, aux_lhs, aux_lhs_vars, aux_rhs)
+	'''
+	print('LP RETURNED TO AUX_METHOD FROM LARGEST_COEFF_PIVOT:')
+	print('aux_obj:\n', aux_obj)
+	print('aux_obj_val: ', aux_obj_val)
+	print('aux_lhs:\n', aux_lhs)
+	print('aux_rhs:\n', aux_rhs)
+	print('aux_obj_vars:\n', aux_obj_vars)
+	print('aux_lhs_vars:\n', aux_lhs_vars)
+	print('==============================')
+	'''
+
 
 	# Check if original LP is feasible. Print infeasible and terminate program if not.
 	if aux_obj_val != 0:
+		print('AUXILIARY INFEASIBLE')
 		print('infeasible')
 		exit(0)
 
@@ -189,10 +214,21 @@ def auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs):
 				col_to_delete = pos
 				break
 		break
-	lhs_vars = np.delete(aux_lhs_vars, col_to_delete, 1)
-	# there's one less col in lhs, so the Omega coeffs col are shifted over by one 
-	lhs = np.delete(aux_lhs, col_to_delete-1, 1)
+	# if omega is a basis variable, remove that row and keep all columns:
+	if col_to_delete == -1:
+		for row, var in enumerate(aux_lhs_vars[:,0]):
+			if int(var) == 0:
+				# delete this row instead of deleting a column
+				lhs_vars = np.delete(aux_lhs_vars, row, 0)
+				lhs = np.delete(aux_lhs, row, 0)
+				break
+	else:
+		lhs_vars = np.delete(aux_lhs_vars, col_to_delete, 1)
+		# there's one less col in lhs, so the Omega coeffs col are shifted over by one 
+		lhs = np.delete(aux_lhs, col_to_delete-1, 1)
+	
 	# Set obj_vars to have the same form as the updated lhs_vars
+	old_obj_vars = np.copy(obj_vars)
 	obj_vars = lhs_vars[0,1:]
 	
 	
@@ -201,19 +237,46 @@ def auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs):
 	old_obj_coeffs = np.copy(obj)
 	# reset all the obj coeffs and sum them up while looping through lhs to collect the coeffs
 	obj = np.zeros(len(old_obj_coeffs))
-	# loop through the first col of lhs_vars to find rows that looks like x_n = b_n + a_11*...
+	# initialize obj_val in order to add to it when merging aux_LP and original_LP
+	obj_val = 0
+	nonbasic_x_vals = np.array([int(x) for x in range(len(obj))])
+	# print('BEFORE**********nonbasic_x_vals:\n', nonbasic_x_vals)
+	# loop through the first col of lhs_vars to find rows that looks like x_n = b_n + ...
 	for row_num, var_num in enumerate(lhs_vars[:,0]):
 		# if we're looking at an x1, x2, ..., or xn row
 		if var_num > 0:
+			# update obj_val and cross it off the list of x_n values that were in the basis (crossing off by setting to -1)
+			nonbasic_x_vals[int(var_num-1)] = -1
+			obj_val += aux_rhs[row_num] * old_obj_coeffs[int(var_num-1)]
+			# update obj coeffs:
 			for col_num in range(len(obj)):
 				# ************ TODO warninig: it's possible that lhs[row,col] should be negative... I'm not sure ****************
 				obj[col_num] -= old_obj_coeffs[int(var_num-1)] * lhs[row_num, col_num]
+	
+	# print('AFTER**********nonbasic_x_vals:\n', nonbasic_x_vals)
+	
+	# for all x_n values that weren't in the basis, just sub them back in as variables. 
+	# BUT! Make sure you're adding the old_coeff to the old obj_vars variable, and not adding the old_coeff to the new obj_vars position.
+	for col_num in range(len(obj)):
+		if col_num in nonbasic_x_vals:
+			# now find the old_obj_var associated with this col_num
+			for new_pos, var in enumerate(obj_vars):
+				if col_num+1 == int(var):
+					#print('OBJ BEFORE:')
+					#print(obj)
+					# TODO: This could be += or -=..... Not sure. ******************
+					obj[new_pos] += old_obj_coeffs[col_num]
+					#print('OBJ AFTER:')
+					#print(obj)
+
+					
+
 	# update rhs:
 	rhs = np.copy(aux_rhs)
 
 	# return original LP that's now organised to be feasible
 	print('AUXILIARY COMPLETE')
-	return obj, obj_vars, lhs, lhs_vars, rhs
+	return obj, obj_vars, obj_val, lhs, lhs_vars, rhs
 
 
 # Checks for and handles degeneracy, unboundedness, infeasibility, and auxiliary method necessity.
@@ -230,16 +293,20 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 		# Note: if no val in rhs is negative to start, it never will become negative through future Simplex pivots
 		for b in rhs:
 			if b < 0:
-				obj, obj_vars, lhs, lhs_vars, rhs = auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs)
+				obj, obj_vars, obj_val, lhs, lhs_vars, rhs = auxiliary_method(obj, obj_vars, lhs, lhs_vars, rhs)
 				'''
 				print("LP COMING OUT OF AUXILIARY:")
 				print('obj:\n', obj)
+				print('obj_val: ', obj_val)
 				print('lhs:\n', lhs)
 				print('rhs:\n', rhs)
 				print('obj_vars:\n', obj_vars)
 				print('lhs_vars:\n', lhs_vars)
 				'''
 				break
+		# need to check if the rearranged LP coming from the Aux_method is now optimal
+		if is_optimal(obj, rhs):	
+			break
 
 		# Check if cycling is possible (if there exist 2 zeros vals in rhs):
 		# if not in cycle_mode already, check if we should be
@@ -249,6 +316,7 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 				if coeff == 0:
 					zero_count += 1
 				if zero_count == 2:
+					#print('ENTERING CYCLING_MODE')
 					cycle_mode = True
 					# set e_0=0, e_1=1, ... e_n=n for all epsilon offsets
 					rhs_epsilon = np.array([int(e) for e in range(len(rhs))])	
@@ -301,7 +369,7 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 				# if this if true, then there exists a constraint s.t. the entering variable cannot go to infinity
 				if lhs[pos, entering_pos] > 0:
 					is_unbounded = False
-					if rhs[pos] / lhs[pos,entering_pos] < min_ratio and rhs[pos] > 0:
+					if rhs[pos] / lhs[pos,entering_pos] < min_ratio and rhs[pos] >= 0: # ******************************* Previously this was just >0
 						min_ratio = rhs[pos] / lhs[pos, entering_pos]
 						leaving_pos = pos
 		
@@ -321,6 +389,7 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 		'''
 		# pivot rhs_epsilon values
 		if cycle_mode:
+			'''
 			print('*************')
 			print('leaving_pos: ', leaving_pos)
 			print('entering_pos: ', entering_pos)
@@ -329,6 +398,7 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 			print('lhs:\n', lhs)
 			print('rhs:\n', rhs)
 			print('rhs_epsilon pre-pivot:\n', rhs_epsilon)
+			'''
 			# TODO: appropriately pivot rhs_epsilon, then the normal pivot can be called as usual.
 			for pos in range(len(rhs_epsilon)):
 				if pos == leaving_pos:
@@ -336,17 +406,17 @@ def largest_coeff_pivot(obj, obj_vars, obj_val, lhs, lhs_vars, rhs):
 					continue
 				if lhs[leaving_pos, entering_pos] > 0 and rhs_epsilon[leaving_pos] < rhs_epsilon[pos]:
 					rhs_epsilon[pos] = rhs_epsilon[leaving_pos]
-			print('rhs_epsilon post-pivot:\n', rhs_epsilon)
+			#print('rhs_epsilon post-pivot:\n', rhs_epsilon)
 			
 		# pivot with found entering and leaving vars:
 		obj, obj_vars, obj_val, lhs, lhs_vars, rhs = pivot_dictionary(obj, obj_vars, obj_val, lhs, lhs_vars, rhs, entering_pos, leaving_pos) 
-	#'''
+	'''
 	print('final objective coefficients:\n', obj)
 	print('final lhs:\n', lhs)
 	print('final rhs:\n', rhs)
 	print('final objective vars:\n', obj_vars)
 	print('final basis vars:\n', lhs_vars)
-	#'''
+	'''
 	return obj, obj_vars, obj_val, lhs, lhs_vars, rhs
 
 
@@ -376,12 +446,14 @@ def use_linprog(obj_fun, lhs, rhs):
 		print("UNKNOWN ERROR")
 
 def main():
-
+	
+	'''
 	if len(sys.argv) != 2:
 		print("Error: this program requires exactly 1 argument -> an input file containing the linear program to be solved.")
 		print("-----> Example of correct program call: $ python LP_solver.py input_file.txt")
 		return 0
-	
+	'''	
+
 	# parses input file into numpy arrays
 	obj, obj_vars, lhs, lhs_vars, rhs = parse_input()	
 	# initialize objective value to 0
