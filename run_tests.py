@@ -13,7 +13,7 @@ def main():
 		#os.system('python3 LP_solver.py "' + TEST_DIR + '"445k21_Lecture01_bakery.txt')
 		#os.system('python3 LP_solver.py ' + TEST_DIR + '445k21_Lecture01_bakery.txt')
 		#print('python3 LP_solver.py ' + TEST_DIR + '445k21_Lecture01_bakery.txt')
-		os.system('python3 LP_solver.py ' + TEST_DIR + TEST_FILE + " > terminal_output.txt")
+		os.system('python3 LP_solver.py < ' + TEST_DIR + TEST_FILE + " > terminal_output.txt")
 		
 		#command = 'python3 LP_solver.py ' + TEST_DIR + TEST_FILE
 		#result = subprocess.run('python3 LP_solver.py ' + TEST_DIR + TEST_FILE, capture_output=True)
